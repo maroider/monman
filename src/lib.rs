@@ -119,7 +119,17 @@ impl DisplayAdapter {
         orientation: DisplayOrientation,
     ) -> Result<(), SetDisplaySettingsError> {
         let mut devmode = DisplayDeviceInfo::get_raw(&self);
-        devmode.dmFields = DmFields::DISPLAYORIENTATION.bits();
+        let mut fields = DmFields::DISPLAYORIENTATION;
+
+        let current_orientation =
+            DisplayOrientation::from_raw(unsafe { devmode.u1.s2().dmDisplayOrientation }).unwrap();
+
+        if current_orientation.is_90_or_270_relative(orientation) {
+            mem::swap(&mut devmode.dmPelsWidth, &mut devmode.dmPelsHeight);
+            fields.insert(DmFields::PELSWIDTH | DmFields::PELSHEIGHT);
+        }
+
+        devmode.dmFields = fields.bits();
         unsafe { devmode.u1.s2_mut() }.dmDisplayOrientation = orientation.as_raw();
 
         // TODO: Parametrize the `dwFlags` argument
@@ -434,6 +444,19 @@ impl DisplayOrientation {
             Self::Rotate90 => DMDO_90,
             Self::Rotate180 => DMDO_180,
             Self::Rotate270 => DMDO_270,
+        }
+    }
+
+    pub fn is_90_or_270_relative(self, other: DisplayOrientation) -> bool {
+        match self {
+            Self::Default | Self::Rotate180 => match other {
+                Self::Rotate90 | Self::Rotate270 => true,
+                _ => false,
+            },
+            Self::Rotate90 | Self::Rotate270 => match other {
+                Self::Default | Self::Rotate180 => true,
+                _ => false,
+            },
         }
     }
 }
